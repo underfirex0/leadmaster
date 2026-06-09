@@ -114,3 +114,23 @@ export const EFFECTIF_OPTIONS = [
   '500+ employés',
 ]
 export const MAX_RESULTS = 100
+
+// Direction fields (for unlock system)
+export const DIRECTION_FIELD_COSTS: Record<string, number> = {
+  dir_daf_nom: 2, dir_daf_email: 5, dir_daf_tel: 5,
+  dir_rh_nom: 2, dir_rh_email: 5, dir_rh_tel: 5,
+  dir_achat_nom: 2, dir_achat_email: 5, dir_achat_tel: 5,
+  dir_marketing_nom: 2, dir_marketing_email: 5, dir_marketing_tel: 5,
+  dir_commercial_nom: 2, dir_commercial_email: 5, dir_commercial_tel: 5,
+}
+
+// Merge into FIELD_COSTS and FIELD_LABELS
+Object.assign(FIELD_COSTS, DIRECTION_FIELD_COSTS)
+
+Object.assign(FIELD_LABELS, {
+  dir_daf_nom: 'DAF — Nom', dir_daf_email: 'DAF — E-mail', dir_daf_tel: 'DAF — Tél.',
+  dir_rh_nom: 'DRH — Nom', dir_rh_email: 'DRH — E-mail', dir_rh_tel: 'DRH — Tél.',
+  dir_achat_nom: 'Dir. Achats — Nom', dir_achat_email: 'Dir. Achats — E-mail', dir_achat_tel: 'Dir. Achats — Tél.',
+  dir_marketing_nom: 'Dir. Marketing — Nom', dir_marketing_email: 'Dir. Marketing — E-mail', dir_marketing_tel: 'Dir. Marketing — Tél.',
+  dir_commercial_nom: 'Dir. Commercial — Nom', dir_commercial_email: 'Dir. Commercial — E-mail', dir_commercial_tel: 'Dir. Commercial — Tél.',
+})
