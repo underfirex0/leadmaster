@@ -390,27 +390,66 @@ export default function ResultsPage() {
                               <FieldRow icon={TrendingUp} label="Chiffre d'affaires" field="revenue_label" bizId={biz.id}
                                 value={getVal(biz, 'revenue_label')} cost={!paidFields.includes('revenue_label') ? FIELD_COSTS.revenue_label : undefined}
                                 unlockState={unlockState} onUnlock={handleUnlock} />
-
-                              {/* CRM button */}
                               <div className="pt-2">
-                                <button
-                                  onClick={() => !addedCRM.has(biz.id) && addToCRM(biz.id)}
+                                <button onClick={() => !addedCRM.has(biz.id) && addToCRM(biz.id)}
                                   disabled={addedCRM.has(biz.id) || addingCRM[biz.id]}
-                                  className={cn(
-                                    'flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg border transition-all w-full justify-center',
-                                    addedCRM.has(biz.id)
-                                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700 cursor-default'
-                                      : 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
-                                  )}
-                                >
-                                  {addingCRM[biz.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> :
-                                   addedCRM.has(biz.id) ? <CheckCircle className="w-3.5 h-3.5" /> :
-                                   <Plus className="w-3.5 h-3.5" />}
+                                  className={cn('flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg border transition-all w-full justify-center',
+                                    addedCRM.has(biz.id) ? 'bg-emerald-50 border-emerald-200 text-emerald-700 cursor-default' : 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100')}>
+                                  {addingCRM[biz.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : addedCRM.has(biz.id) ? <CheckCircle className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                                   {addedCRM.has(biz.id) ? 'Ajouté au CRM' : 'Ajouter au CRM'}
                                 </button>
                               </div>
                             </div>
                           </div>
+
+                          {/* Direction contacts row */}
+                          {(() => {
+                            const dirs = [
+                              { key: 'daf',        label: '💰 DAF',              nom: 'dir_daf_nom',        email: 'dir_daf_email',        tel: 'dir_daf_tel' },
+                              { key: 'rh',         label: '👥 DRH',              nom: 'dir_rh_nom',         email: 'dir_rh_email',         tel: 'dir_rh_tel' },
+                              { key: 'achat',      label: '🛒 Dir. Achats',      nom: 'dir_achat_nom',      email: 'dir_achat_email',      tel: 'dir_achat_tel' },
+                              { key: 'marketing',  label: '📣 Dir. Marketing',   nom: 'dir_marketing_nom',  email: 'dir_marketing_email',  tel: 'dir_marketing_tel' },
+                              { key: 'commercial', label: '📈 Dir. Commercial',  nom: 'dir_commercial_nom', email: 'dir_commercial_email', tel: 'dir_commercial_tel' },
+                            ]
+                            const hasDirs = dirs.some(d =>
+                              getVal(biz, d.nom) || getVal(biz, d.email) || getVal(biz, d.tel) ||
+                              paidFields.includes(d.nom) || paidFields.includes(d.email)
+                            )
+                            if (!hasDirs) return null
+                            return (
+                              <div className="mt-4 pt-4 border-t border-slate-200">
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                                  <UserRound className="w-3.5 h-3.5" /> Contacts directions
+                                </h4>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                                  {dirs.map(dir => {
+                                    const nom   = getVal(biz, dir.nom)
+                                    const email = getVal(biz, dir.email)
+                                    const tel   = getVal(biz, dir.tel)
+                                    const nomLocked   = !nom   && paidFields.includes(dir.nom)
+                                    const emailLocked = !email && paidFields.includes(dir.email)
+                                    if (!nom && !email && !tel && !nomLocked && !emailLocked) return null
+                                    return (
+                                      <div key={dir.key} className="bg-white border border-slate-200 rounded-xl p-3 space-y-1.5">
+                                        <p className="text-[11px] font-bold text-slate-500">{dir.label}</p>
+                                        {nom ? (
+                                          <p className="text-[12px] font-semibold text-slate-800">{nom}</p>
+                                        ) : paidFields.includes(dir.nom) ? (
+                                          <LockBtn cost={FIELD_COSTS[dir.nom] ?? 2} state={unlockState[`${biz.id}:${dir.nom}`] || 'idle'} onClick={() => handleUnlock(biz.id, dir.nom)} />
+                                        ) : null}
+                                        {email ? (
+                                          <a href={`mailto:${email}`} className="text-[11px] text-brand-600 hover:underline truncate block">{email}</a>
+                                        ) : paidFields.includes(dir.email) ? (
+                                          <LockBtn cost={FIELD_COSTS[dir.email] ?? 5} state={unlockState[`${biz.id}:${dir.email}`] || 'idle'} onClick={() => handleUnlock(biz.id, dir.email)} />
+                                        ) : null}
+                                        {tel && <p className="text-[11px] font-mono text-slate-600">{tel}</p>}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })()}
                         </td>
                       </tr>
                     )}
