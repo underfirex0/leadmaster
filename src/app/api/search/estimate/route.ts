@@ -1,11 +1,8 @@
 export const dynamic = 'force-dynamic'
-
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { FIELD_COSTS } from '@/lib/constants'
-import { calculateCostPerBusiness } from '@/lib/utils'
-import type { SearchFilters } from '@/types'
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,45 +11,38 @@ export async function GET(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
     const { searchParams } = new URL(request.url)
-    const fields = searchParams.getAll('fields')
-    const filters: SearchFilters = {
-      search: searchParams.get('search') || undefined,
-      sector: searchParams.get('sector') || undefined,
-      city: searchParams.get('city') || undefined,
-      region: searchParams.get('region') || undefined,
-      effectif_label: searchParams.get('effectif_label') || undefined,
-    }
 
-    // Build count query
-    let dbQuery = supabaseAdmin.from('businesses').select('*', { count: 'exact', head: true })
+    // Support both single value and comma-separated multi-values
+    const sectors  = searchParams.get('sectors')?.split(',').filter(Boolean) ?? []
+    const cities   = searchParams.get('cities')?.split(',').filter(Boolean) ?? []
+    const regions  = searchParams.get('regions')?.split(',').filter(Boolean) ?? []
+    const effectif = searchParams.get('effectif')?.split(',').filter(Boolean) ?? []
+    const name     = searchParams.get('name') || ''
+    const fields   = searchParams.get('fields')?.split(',').filter(Boolean) ?? []
+    const limit    = parseInt(searchParams.get('limit') || '50')
 
-    if (filters.search) {
-      dbQuery = dbQuery.or(`name.ilike.%${filters.search}%,sector.ilike.%${filters.search}%`)
-    }
-    if (filters.sector) dbQuery = dbQuery.eq('sector', filters.sector)
-    if (filters.city) dbQuery = dbQuery.eq('city', filters.city)
-    if (filters.region) dbQuery = dbQuery.eq('region', filters.region)
-    if (filters.effectif_label) dbQuery = dbQuery.eq('effectif_label', filters.effectif_label)
+    let q = supabaseAdmin.from('businesses').select('*', { count: 'exact', head: true })
+    if (name)             q = q.ilike('name', `%${name}%`)
+    if (sectors.length)   q = q.in('sector', sectors)
+    if (cities.length)    q = q.in('city', cities)
+    if (regions.length)   q = q.in('region', regions)
+    if (effectif.length)  q = q.in('effectif_label', effectif)
 
-    const { count, error } = await dbQuery
+    const { count, error } = await q
+    if (error) return NextResponse.json({ error: 'Erreur base de données' }, { status: 500 })
 
-    if (error) {
-      return NextResponse.json({ error: 'Erreur base de données' }, { status: 500 })
-    }
-
-    const validFields = fields.filter(f => FIELD_COSTS[f] !== undefined)
-    const costPerBusiness = calculateCostPerBusiness(validFields)
-    const totalCount = count ?? 0
-    const totalCost = costPerBusiness * totalCount
+    const totalCount   = Math.min(count ?? 0, limit)
+    const paidFields   = fields.filter(f => FIELD_COSTS[f] && FIELD_COSTS[f] > 0)
+    const costPerBiz   = paidFields.reduce((s, f) => s + (FIELD_COSTS[f] ?? 0), 0)
+    const totalCost    = costPerBiz * totalCount
 
     return NextResponse.json({
-      count: totalCount,
-      costPerBusiness,
-      totalCost,
-      fieldsRequested: validFields,
+      count: count ?? 0,
+      display_count: totalCount,
+      cost_per_biz: costPerBiz,
+      total_cost: totalCost,
     })
   } catch (e) {
-    console.error('Estimate error:', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
