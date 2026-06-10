@@ -243,14 +243,21 @@ export default function SearchPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          filters: { sectors, cities, regions, effectif_label: effectif, name: nameSearch },
+          filters: { sectors, cities, regions, effectif: effectif, name: nameSearch },
           fields:  selectedFields,
           limit:   maxResults,
         }),
       })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || 'Crédits insuffisants'); return }
-      router.push(`/results?queryId=${data.queryId}`)
+
+      // Always store results in sessionStorage before navigating
+      const qid = data.queryId || `local_${Date.now()}`
+      try {
+        sessionStorage.setItem(`query_${qid}`, JSON.stringify(data))
+      } catch {}
+
+      router.push(`/results?queryId=${qid}`)
     } catch { toast.error('Erreur réseau') }
     finally { setLaunching(false) }
   }
