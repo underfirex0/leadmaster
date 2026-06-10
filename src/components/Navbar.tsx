@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Search, LayoutDashboard, Wallet, LogOut, ChevronDown, Users2, Crown, Calendar, Target, Settings } from 'lucide-react'
+import { Search, LayoutDashboard, Wallet, LogOut, ChevronDown, Users2, Crown, Calendar, Target, Settings, Database } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import type { Profile } from '@/types'
 import { cn } from '@/lib/utils'
@@ -40,10 +40,11 @@ export default function Navbar({ profile }: NavbarProps) {
   }
 
   const navLinks = [
-    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/search',    label: 'Recherche',  icon: Search },
-    { href: '/crm',       label: 'CRM',        icon: Users2 },
-    { href: '/meetings',  label: 'Meetings',   icon: Calendar },
+    { href: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard },
+    { href: '/search',     label: 'Recherche',  icon: Search },
+    { href: '/databases',  label: 'Recherches', icon: Database },
+    { href: '/crm',        label: 'CRM',        icon: Users2 },
+    { href: '/meetings',   label: 'Meetings',   icon: Calendar },
   ]
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
   const planId = profile.plan_id ?? 'decouverte'
