@@ -41,12 +41,12 @@ const CALL_OUTCOMES: { value: CallOutcome; label: string; icon: React.ElementTyp
   { value: 'not_interested',  label: 'Pas intéressé',  icon: XCircle,     color: 'text-red-600 bg-red-50 hover:bg-red-100', nextStatus: 'not_interested' },
 ]
 
-function StatusBadge({ status, onClick }: { status: CRMStatus; onClick?: () => void }) {
+function StatusBadge({ status, onClick }: { status: CRMStatus; onClick?: (e?: React.MouseEvent) => void }) {
   const cfg = STATUS_CONFIG[status]
   const Icon = cfg.icon
   return (
     <button
-      onClick={onClick}
+      onClick={onClick ? (e) => onClick(e) : undefined}
       className={cn(
         'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all',
         cfg.bg, cfg.color, cfg.border,
@@ -75,6 +75,7 @@ export default function CRMPage() {
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({})
   const [savingNote, setSavingNote] = useState<string | null>(null)
   const [statusDropdown, setStatusDropdown] = useState<string | null>(null)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   // key = `${bizId}:${field}` → value | 'loading'
   const [unlocking, setUnlocking] = useState<Record<string, string>>({})
 
@@ -106,6 +107,13 @@ export default function CRMPage() {
       setUnlocking(u => { const n = { ...u }; delete n[key]; return n })
     }
   }
+
+  useEffect(() => {
+    if (!statusDropdown) return
+    const close = () => setStatusDropdown(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [statusDropdown])
 
   const fetchLeads = useCallback(async () => {
     setLoading(true)
@@ -346,10 +354,23 @@ export default function CRMPage() {
                         <div className="relative">
                           <StatusBadge
                             status={lead.status}
-                            onClick={() => setStatusDropdown(statusDropdown === lead.id ? null : lead.id)}
+                            onClick={(e?: React.MouseEvent) => {
+                              if (statusDropdown === lead.id) {
+                                setStatusDropdown(null)
+                              } else {
+                                const btn = (e?.currentTarget as HTMLElement)
+                                if (btn) {
+                                  const rect = btn.getBoundingClientRect()
+                                  setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+                                }
+                                setStatusDropdown(lead.id)
+                              }
+                            }}
                           />
                           {statusDropdown === lead.id && (
-                            <div className="absolute top-full left-0 mt-1 z-50 card shadow-xl border border-slate-200 py-1 w-44">
+                            <div
+                              style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+                              className="bg-white shadow-xl border border-slate-200 rounded-xl py-1 w-48 animate-scale-in">
                               {ALL_STATUSES.map(s => {
                                 const cfg = STATUS_CONFIG[s]
                                 const Icon = cfg.icon
