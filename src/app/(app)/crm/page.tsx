@@ -371,7 +371,12 @@ export default function CRMPage() {
                                 const btn = (e?.currentTarget as HTMLElement)
                                 if (btn) {
                                   const rect = btn.getBoundingClientRect()
-                                  setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+                                  const DROPDOWN_H = 7 * 36 + 16 // 7 items × 36px + padding
+                                  const spaceBelow = window.innerHeight - rect.bottom
+                                  const top = spaceBelow < DROPDOWN_H
+                                    ? rect.top - DROPDOWN_H - 4   // open upward
+                                    : rect.bottom + 4              // open downward
+                                  setDropdownPos({ top, left: rect.left })
                                 }
                                 setStatusDropdown(lead.id)
                               }
