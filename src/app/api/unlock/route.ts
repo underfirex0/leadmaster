@@ -1,10 +1,8 @@
 export const dynamic = 'force-dynamic'
-
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { FIELD_COSTS } from '@/lib/constants'
-import type { Business } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,135 +10,67 @@ export async function POST(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-    const body = await request.json()
-    const { businessId, field } = body as { businessId: string; field: string }
-
-    if (!businessId || !field) {
-      return NextResponse.json({ error: 'businessId et field requis' }, { status: 400 })
-    }
+    const { businessId, field } = await request.json()
+    if (!businessId || !field) return NextResponse.json({ error: 'businessId et field requis' }, { status: 400 })
 
     const cost = FIELD_COSTS[field]
-    if (cost === undefined) {
-      return NextResponse.json({ error: 'Champ invalide ou gratuit' }, { status: 400 })
-    }
+    if (cost === undefined || cost === 0) return NextResponse.json({ error: 'Champ invalide' }, { status: 400 })
 
-    // ── Check if already unlocked ─────────────────────────────────
+    // Already unlocked?
     const { data: existing } = await supabaseAdmin
-      .from('unlock_events')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('business_id', businessId)
-      .eq('field', field)
-      .maybeSingle()
+      .from('unlock_events').select('id')
+      .eq('user_id', user.id).eq('business_id', businessId).eq('field', field).maybeSingle()
 
-    // Fetch business record (we need it for the value)
-    const { data: business, error: bizError } = await supabaseAdmin
-      .from('businesses')
-      .select('*')
-      .eq('id', businessId)
-      .single()
+    // Get business
+    const { data: biz, error: bizErr } = await supabaseAdmin
+      .from('businesses').select('*').eq('id', businessId).single()
+    if (bizErr || !biz) return NextResponse.json({ error: 'Entreprise introuvable' }, { status: 404 })
 
-    if (bizError || !business) {
-      return NextResponse.json({ error: 'Entreprise introuvable' }, { status: 404 })
-    }
+    const value = (biz as Record<string, unknown>)[field]
+    if (!value) return NextResponse.json({ error: 'Donnée non disponible pour ce champ' }, { status: 404 })
 
-    const value = (business as unknown as Record<string, string | null>)[field]
-    if (!value) {
-      return NextResponse.json({ error: 'Valeur non disponible pour ce champ' }, { status: 404 })
-    }
-
-    if (existing) {
-      // Already unlocked — return value without charging
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('credit_balance')
-        .eq('id', user.id)
-        .single()
-
-      return NextResponse.json({
-        value,
-        creditsSpent: 0,
-        newBalance: profile?.credit_balance ?? 0,
-        alreadyUnlocked: true,
-      })
-    }
-
-    // ── Check balance ─────────────────────────────────────────────
+    // Get current balance
     const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('credit_balance')
-      .eq('id', user.id)
-      .single()
+      .from('profiles').select('credit_balance').eq('id', user.id).single()
+    const currentBalance = profile?.credit_balance ?? 0
 
-    if (!profile) return NextResponse.json({ error: 'Profil introuvable' }, { status: 404 })
-
-    if (profile.credit_balance < cost) {
-      return NextResponse.json(
-        { error: 'Crédits insuffisants', required: cost, available: profile.credit_balance },
-        { status: 402 }
-      )
+    // Already unlocked → return free
+    if (existing) {
+      return NextResponse.json({ value, creditsSpent: 0, newBalance: currentBalance, alreadyUnlocked: true })
     }
 
-    // ── Deduct credits ────────────────────────────────────────────
-    const { data: newBalance, error: deductError } = await supabaseAdmin.rpc('deduct_credits', {
-      p_user_id: user.id,
-      p_amount: cost,
-      p_type: 'unlock',
-      p_ref_id: businessId,
-      p_description: `Déverrouillage ${field} — ${(business as unknown as Business).name}`,
+    // Check balance
+    if (currentBalance < cost) {
+      return NextResponse.json({ error: 'Crédits insuffisants', required: cost, available: currentBalance }, { status: 402 })
+    }
+
+    const newBalance = currentBalance - cost
+
+    // Deduct directly
+    const { error: updateErr } = await supabaseAdmin
+      .from('profiles').update({ credit_balance: newBalance }).eq('id', user.id)
+    if (updateErr) return NextResponse.json({ error: 'Erreur déduction' }, { status: 500 })
+
+    // Log transaction
+    await supabaseAdmin.from('credit_transactions').insert({
+      user_id: user.id, amount: -cost, balance_after: newBalance,
+      type: 'unlock', description: `Déverrouillage ${field} — ${biz.name}`,
     })
 
-    if (deductError) {
-      if (deductError.message?.includes('Insufficient')) {
-        return NextResponse.json(
-          { error: 'Crédits insuffisants', required: cost, available: profile.credit_balance },
-          { status: 402 }
-        )
-      }
-      console.error('Deduct error:', deductError)
-      return NextResponse.json({ error: 'Erreur déduction crédits' }, { status: 500 })
-    }
-
-    // ── Record unlock event ───────────────────────────────────────
-    const { error: unlockError } = await supabaseAdmin
-      .from('unlock_events')
-      .insert({
-        user_id: user.id,
-        business_id: businessId,
-        field,
-        credits_spent: cost,
-      })
-
-    if (unlockError) {
-      // This can happen if there's a race condition (unique constraint)
-      // In that case, the credits were already deducted — we should refund
-      if (unlockError.code === '23505') {
-        // Unique violation — already unlocked, refund
-        await supabaseAdmin.rpc('add_credits', {
-          p_user_id: user.id,
-          p_amount: cost,
-          p_type: 'refund',
-          p_description: `Remboursement doublon: ${field} — ${(business as unknown as Business).name}`,
-        })
-        return NextResponse.json({
-          value,
-          creditsSpent: 0,
-          newBalance: profile.credit_balance, // approximate
-          alreadyUnlocked: true,
-        })
-      }
-      console.error('Unlock insert error:', unlockError)
-      return NextResponse.json({ error: 'Erreur enregistrement déverrouillage' }, { status: 500 })
-    }
-
-    return NextResponse.json({
-      value,
-      creditsSpent: cost,
-      newBalance: newBalance as number,
-      alreadyUnlocked: false,
+    // Record unlock (handle race condition)
+    const { error: unlockErr } = await supabaseAdmin.from('unlock_events').insert({
+      user_id: user.id, business_id: businessId, field, credits_spent: cost,
     })
+
+    if (unlockErr?.code === '23505') {
+      // Race condition — refund
+      await supabaseAdmin.from('profiles').update({ credit_balance: currentBalance }).eq('id', user.id)
+      return NextResponse.json({ value, creditsSpent: 0, newBalance: currentBalance, alreadyUnlocked: true })
+    }
+
+    return NextResponse.json({ value, creditsSpent: cost, newBalance, alreadyUnlocked: false })
   } catch (e) {
-    console.error('Unlock API error:', e)
+    console.error('Unlock error:', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
