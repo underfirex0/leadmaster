@@ -7,10 +7,11 @@ import {
   ChevronDown, ChevronUp, Search, StickyNote,
   Loader2, Trash2, RefreshCw, UserRound, Mail,
   Globe, MapPin, Users, TrendingUp, Building2,
-  CalendarClock, AlertTriangle, RotateCcw
+  CalendarClock, AlertTriangle, RotateCcw, Lock
 } from 'lucide-react'
 import { cn, formatDate, formatDateShort } from '@/lib/utils'
 import { useToast } from '@/components/Toast'
+import { FIELD_COSTS } from '@/lib/constants'
 import type { CRMLead, CRMStatus, CallOutcome } from '@/types'
 
 // ── Config ────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ function StatusBadge({ status, onClick }: { status: CRMStatus; onClick?: () => v
 type CallModalState = { leadId: string; bizName: string; phone: string | null } | null
 
 export default function CRMPage() {
+  const toast = useToast()
   const [leads, setLeads] = useState<CRMLead[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -73,6 +75,37 @@ export default function CRMPage() {
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({})
   const [savingNote, setSavingNote] = useState<string | null>(null)
   const [statusDropdown, setStatusDropdown] = useState<string | null>(null)
+  // key = `${bizId}:${field}` → value | 'loading'
+  const [unlocking, setUnlocking] = useState<Record<string, string>>({})
+
+  async function unlockField(bizId: string, field: string) {
+    const key = `${bizId}:${field}`
+    setUnlocking(u => ({ ...u, [key]: 'loading' }))
+    try {
+      const res = await fetch('/api/unlock', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId: bizId, field }),
+      })
+      const d = await res.json()
+      if (!res.ok) {
+        toast.error(d.error || 'Erreur')
+        setUnlocking(u => { const n = { ...u }; delete n[key]; return n })
+        return
+      }
+      // Store the value and update lead in-place
+      setUnlocking(u => ({ ...u, [key]: d.value ?? '' }))
+      setLeads(prev => prev.map(lead => {
+        if (!lead.business || (lead.business as Record<string, unknown>).id !== bizId) return lead
+        const biz = lead.business as Record<string, unknown>
+        const updated = { ...biz, [field]: d.value, unlocked: { ...(biz.unlocked as Record<string,unknown> ?? {}), [field]: d.value } }
+        return { ...lead, business: updated as typeof lead.business }
+      }))
+      if (!d.alreadyUnlocked) toast.success(`${field} débloqué · −${d.creditsSpent} cr`)
+    } catch {
+      toast.error('Erreur réseau')
+      setUnlocking(u => { const n = { ...u }; delete n[key]; return n })
+    }
+  }
 
   const fetchLeads = useCallback(async () => {
     setLoading(true)
@@ -408,25 +441,34 @@ export default function CRMPage() {
                       <tr key={`${lead.id}-expanded`} className="bg-brand-50/20 border-b border-slate-100">
                         <td colSpan={5} className="px-6 py-5">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+
                             {/* Contact section */}
                             <div>
                               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                                 <Phone className="w-3.5 h-3.5" /> Contact
                               </h4>
-                              <div className="space-y-2">
-                                {[
-                                  { icon: Phone, label: 'Téléphone', val: biz?.phone },
-                                  { icon: Mail, label: 'E-mail', val: biz?.email },
-                                  { icon: Globe, label: 'Site web', val: biz?.website },
-                                  { icon: MapPin, label: 'Adresse', val: biz?.address },
-                                ].map(({ icon: Icon, label, val }) => (
+                              <div className="space-y-2.5">
+                                {([
+                                  { icon: Phone,  label: 'Téléphone', field: 'phone',   val: biz?.phone },
+                                  { icon: Mail,   label: 'E-mail',    field: 'email',   val: biz?.email },
+                                  { icon: Globe,  label: 'Site web',  field: 'website', val: biz?.website },
+                                  { icon: MapPin, label: 'Adresse',   field: 'address', val: biz?.address },
+                                ] as { icon: React.ElementType; label: string; field: string; val: string | null | undefined }[]).map(({ icon: Icon, label, field, val }) => (
                                   <div key={label} className="flex items-start gap-2">
-                                    <Icon className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                                    <div>
-                                      <p className="text-xs text-slate-400">{label}</p>
-                                      <p className={cn('text-sm', val ? 'text-slate-800 font-mono' : 'text-slate-300 italic text-xs')}>
-                                        {val || 'Non débloqué'}
-                                      </p>
+                                    <Icon className="w-3.5 h-3.5 text-slate-400 mt-1 shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[10px] text-slate-400 mb-0.5">{label}</p>
+                                      {val
+                                        ? <p className="text-[13px] text-slate-800 font-mono break-all">{val}</p>
+                                        : <button onClick={() => unlockField((biz as Record<string,unknown>)?.id as string, field)}
+                                            disabled={unlocking[`${(biz as Record<string,unknown>)?.id}:${field}`] === 'loading'}
+                                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-[6px] hover:bg-amber-100 transition-colors disabled:opacity-50">
+                                            {unlocking[`${(biz as Record<string,unknown>)?.id}:${field}`] === 'loading'
+                                              ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                              : <Lock className="w-2.5 h-2.5" />}
+                                            Débloquer · {FIELD_COSTS[field] ?? 1} cr
+                                          </button>
+                                      }
                                     </div>
                                   </div>
                                 ))}
@@ -438,23 +480,67 @@ export default function CRMPage() {
                               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                                 <UserRound className="w-3.5 h-3.5" /> Dirigeant
                               </h4>
-                              <div className="space-y-2">
-                                {[
-                                  { icon: UserRound, label: 'Nom', val: biz?.dirigeant_name },
-                                  { icon: Phone, label: 'Téléphone', val: biz?.dirigeant_phone },
-                                  { icon: Mail, label: 'E-mail', val: biz?.dirigeant_email },
-                                ].map(({ icon: Icon, label, val }) => (
+                              <div className="space-y-2.5">
+                                {([
+                                  { icon: UserRound, label: 'Nom',            field: 'dirigeant_name',  val: biz?.dirigeant_name },
+                                  { icon: Phone,     label: 'Tél. direct',    field: 'dirigeant_phone', val: biz?.dirigeant_phone },
+                                  { icon: Mail,      label: 'E-mail direct',  field: 'dirigeant_email', val: biz?.dirigeant_email },
+                                ] as { icon: React.ElementType; label: string; field: string; val: string | null | undefined }[]).map(({ icon: Icon, label, field, val }) => (
                                   <div key={label} className="flex items-start gap-2">
-                                    <Icon className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                                    <div>
-                                      <p className="text-xs text-slate-400">{label}</p>
-                                      <p className={cn('text-sm', val ? 'text-slate-800' : 'text-slate-300 italic text-xs')}>
-                                        {val || 'Non débloqué'}
-                                      </p>
+                                    <Icon className="w-3.5 h-3.5 text-slate-400 mt-1 shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[10px] text-slate-400 mb-0.5">{label}</p>
+                                      {val
+                                        ? <p className="text-[13px] text-slate-800 break-all">{val}</p>
+                                        : <button onClick={() => unlockField((biz as Record<string,unknown>)?.id as string, field)}
+                                            disabled={unlocking[`${(biz as Record<string,unknown>)?.id}:${field}`] === 'loading'}
+                                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-[6px] hover:bg-amber-100 transition-colors disabled:opacity-50">
+                                            {unlocking[`${(biz as Record<string,unknown>)?.id}:${field}`] === 'loading'
+                                              ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                              : <Lock className="w-2.5 h-2.5" />}
+                                            Débloquer · {FIELD_COSTS[field] ?? 2} cr
+                                          </button>
+                                      }
                                     </div>
                                   </div>
                                 ))}
                               </div>
+
+                              {/* Direction contacts if any */}
+                              {([
+                                { prefix: 'dir_daf',        emoji: '💰', label: 'DAF' },
+                                { prefix: 'dir_rh',         emoji: '👥', label: 'DRH' },
+                                { prefix: 'dir_achat',      emoji: '🛒', label: 'Dir. Achats' },
+                                { prefix: 'dir_marketing',  emoji: '📣', label: 'Marketing' },
+                                { prefix: 'dir_commercial', emoji: '📈', label: 'Commercial' },
+                              ] as { prefix: string; emoji: string; label: string }[]).map(({ prefix, emoji, label }) => {
+                                const nomField   = `${prefix}_nom`
+                                const emailField = `${prefix}_email`
+                                const nom   = (biz as Record<string,unknown>)?.[nomField]   as string | null
+                                const email = (biz as Record<string,unknown>)?.[emailField] as string | null
+                                if (!nom && !email) return null
+                                return (
+                                  <div key={prefix} className="mt-3 p-2.5 bg-white border border-[rgba(0,0,0,0.07)] rounded-[10px]">
+                                    <p className="text-[10px] font-bold text-slate-500 mb-1.5">{emoji} {label}</p>
+                                    {nom
+                                      ? <p className="text-[12px] font-semibold text-slate-800">{nom}</p>
+                                      : <button onClick={() => unlockField((biz as Record<string,unknown>)?.id as string, nomField)}
+                                          disabled={unlocking[`${(biz as Record<string,unknown>)?.id}:${nomField}`] === 'loading'}
+                                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-[5px] hover:bg-amber-100 transition-colors">
+                                          <Lock className="w-2 h-2" /> Nom · 2 cr
+                                        </button>
+                                    }
+                                    {email
+                                      ? <p className="text-[11px] text-brand-600 mt-0.5 break-all">{email}</p>
+                                      : <button onClick={() => unlockField((biz as Record<string,unknown>)?.id as string, emailField)}
+                                          disabled={unlocking[`${(biz as Record<string,unknown>)?.id}:${emailField}`] === 'loading'}
+                                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-[5px] hover:bg-amber-100 transition-colors mt-0.5">
+                                          <Lock className="w-2 h-2" /> E-mail · 5 cr
+                                        </button>
+                                    }
+                                  </div>
+                                )
+                              })}
                             </div>
 
                             {/* Entreprise + Notes */}
@@ -462,18 +548,26 @@ export default function CRMPage() {
                               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                                 <Building2 className="w-3.5 h-3.5" /> Entreprise
                               </h4>
-                              <div className="space-y-2 mb-4">
-                                {[
-                                  { icon: Users, label: 'Effectif', val: biz?.effectif_label },
-                                  { icon: TrendingUp, label: "Chiffre d'affaires", val: biz?.revenue_label },
-                                ].map(({ icon: Icon, label, val }) => (
+                              <div className="space-y-2.5 mb-4">
+                                {([
+                                  { icon: Users,      label: 'Effectif',          field: 'effectif_label', val: biz?.effectif_label },
+                                  { icon: TrendingUp, label: "Chiffre d'affaires", field: 'revenue_label',  val: biz?.revenue_label },
+                                ] as { icon: React.ElementType; label: string; field: string; val: string | null | undefined }[]).map(({ icon: Icon, label, field, val }) => (
                                   <div key={label} className="flex items-start gap-2">
-                                    <Icon className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                                    <div>
-                                      <p className="text-xs text-slate-400">{label}</p>
-                                      <p className={cn('text-sm', val ? 'text-slate-800' : 'text-slate-300 italic text-xs')}>
-                                        {val || 'Non débloqué'}
-                                      </p>
+                                    <Icon className="w-3.5 h-3.5 text-slate-400 mt-1 shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[10px] text-slate-400 mb-0.5">{label}</p>
+                                      {val
+                                        ? <p className="text-[13px] text-slate-800">{val}</p>
+                                        : <button onClick={() => unlockField((biz as Record<string,unknown>)?.id as string, field)}
+                                            disabled={unlocking[`${(biz as Record<string,unknown>)?.id}:${field}`] === 'loading'}
+                                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-[6px] hover:bg-amber-100 transition-colors disabled:opacity-50">
+                                            {unlocking[`${(biz as Record<string,unknown>)?.id}:${field}`] === 'loading'
+                                              ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                              : <Lock className="w-2.5 h-2.5" />}
+                                            Débloquer · {FIELD_COSTS[field] ?? 2} cr
+                                          </button>
+                                      }
                                     </div>
                                   </div>
                                 ))}
