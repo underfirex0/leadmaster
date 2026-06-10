@@ -110,9 +110,11 @@ export default function CRMPage() {
 
   useEffect(() => {
     if (!statusDropdown) return
-    const close = () => setStatusDropdown(null)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
+    const close = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setStatusDropdown(null)
+    }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
   }, [statusDropdown])
 
   const fetchLeads = useCallback(async () => {
@@ -201,6 +203,14 @@ export default function CRMPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {/* Backdrop — closes status dropdown on outside click, doesn't block scroll */}
+      {statusDropdown && (
+        <div
+          className="fixed inset-0"
+          style={{ zIndex: 9998, pointerEvents: 'auto' }}
+          onClick={() => setStatusDropdown(null)}
+        />
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -370,7 +380,8 @@ export default function CRMPage() {
                           {statusDropdown === lead.id && (
                             <div
                               style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
-                              className="bg-white shadow-xl border border-slate-200 rounded-xl py-1 w-48 animate-scale-in">
+                              className="bg-white shadow-xl border border-slate-200 rounded-xl py-1 w-48 animate-scale-in"
+                              onClick={e => e.stopPropagation()}>
                               {ALL_STATUSES.map(s => {
                                 const cfg = STATUS_CONFIG[s]
                                 const Icon = cfg.icon
