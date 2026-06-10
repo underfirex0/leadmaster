@@ -86,12 +86,22 @@ export default function ResultsPage() {
   const [allSent, setAllSent] = useState(false)
 
   const loadResults = useCallback(async () => {
-    if (!queryId) { router.push('/search'); return }
+    if (!queryId || queryId === 'undefined') { router.push('/search'); return }
     setLoading(true); setError(null)
+    // Always try sessionStorage first
     try {
       const cached = sessionStorage.getItem(`query_${queryId}`)
-      if (cached) { const d: SearchResult = JSON.parse(cached); setResult(d); setBalance(d.newBalance); setLoading(false); return }
+      if (cached) {
+        const d: SearchResult = JSON.parse(cached)
+        setResult(d); setBalance(d.newBalance ?? null)
+        setLoading(false); return
+      }
     } catch {}
+    // Only hit the API for real UUIDs (not local_ keys)
+    if (queryId.startsWith('local_')) {
+      setError('Résultats expirés. Veuillez relancer la recherche.')
+      setLoading(false); return
+    }
     try {
       const res = await fetch(`/api/search/results?queryId=${queryId}`)
       const data = await res.json()
