@@ -117,7 +117,7 @@ export type CRMStatus =
   | 'converted'
   | 'archived'
 
-export type CRMPriority = 'low' | 'normal' | 'high'
+export type CRMPriority = 'low' | 'normal' | 'high' | 'urgent'
 
 export type CallOutcome =
   | 'no_answer'
@@ -136,6 +136,10 @@ export type CRMLead = {
   notes: string | null
   next_action_at: string | null
   last_contacted_at: string | null
+  last_called_at: string | null
+  status_changed_at: string | null
+  callback_date: string | null
+  callback_note: string | null
   created_at: string
   updated_at: string
   // Joined
