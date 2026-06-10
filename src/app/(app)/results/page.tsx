@@ -203,7 +203,16 @@ export default function ResultsPage() {
   if (!result) return null
 
   const { businesses, totalCount, creditsSpent, fieldsRequested, filters } = result
+  const displayCount = businesses.length
   const paidFields = fieldsRequested.filter(f => FIELD_COSTS[f] !== undefined)
+
+  // Build filter summary
+  const filterParts: string[] = []
+  const f = filters as Record<string, unknown>
+  if (Array.isArray(f?.sectors) && f.sectors.length) filterParts.push((f.sectors as string[]).join(', '))
+  if (Array.isArray(f?.cities)  && f.cities.length)  filterParts.push((f.cities as string[]).join(', '))
+  if (typeof f?.sector === 'string') filterParts.push(f.sector)
+  if (typeof f?.city   === 'string') filterParts.push(f.city)
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -213,9 +222,9 @@ export default function ResultsPage() {
           <Link href="/search" className="btn-secondary p-2"><ArrowLeft className="w-4 h-4" /></Link>
           <div>
             <h1 className="text-xl font-bold text-slate-900">
-              {totalCount} résultat{totalCount > 1 ? 's' : ''}
-              {filters?.sector ? ` — ${filters.sector}` : ''}
-              {filters?.city ? ` · ${filters.city}` : ''}
+              {displayCount} entreprise{displayCount > 1 ? 's' : ''}
+              {totalCount > displayCount ? ` · ${totalCount} trouvées` : ''}
+              {filterParts.length > 0 ? ` — ${filterParts.join(' · ')}` : ''}
             </h1>
             <div className="flex items-center gap-3 mt-0.5">
               <span className="text-sm text-slate-500">{creditsSpent} cr dépensés</span>
